@@ -122,7 +122,7 @@ int mm_init(void)
 }
 
 
-static void *first_fit(size_t size){
+static void *find_fit(size_t size){
     void *bp;
     for (bp = heap_listp; GET_SIZE(HDRP(bp)) > 0; bp= NEXT_BLKP(bp)){
         if (!GET_ALLOC(HDRP(bp))&& (size <= GET_SIZE(HDRP(bp)))){
@@ -171,7 +171,7 @@ void *mm_malloc(size_t size)
     else
         asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1))/DSIZE);
     
-    if ((bp = first_fit(asize)) != NULL){
+    if ((bp = find_fit(asize)) != NULL){
         place(bp, asize);
         return bp;
     }
@@ -188,7 +188,7 @@ void *mm_malloc(size_t size)
 void mm_free(void *ptr)
 {
     size_t size = GET_SIZE(HDRP(ptr));
-    /* implicit_first_fit */
+    /* implicit_find_fit */
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
     coalesce(ptr);
