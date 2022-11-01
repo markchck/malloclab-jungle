@@ -69,8 +69,7 @@ void remove_freenode(char *ptr);        // 가용 리스트의 연결 포인터 
 static char *heap_listp = NULL; // 힙의 시작 주소를 가리킴
 static char *root = NULL;   
 
-int mm_init(void)
-{
+int mm_init(void){
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
         return -1;
     PUT(heap_listp, 0);
@@ -86,8 +85,7 @@ int mm_init(void)
     return 0;
 }
 
-static void *extend_heap(size_t words)
-{
+static void *extend_heap(size_t words){
     char *bp;
     size_t size;
     size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
@@ -102,8 +100,7 @@ static void *extend_heap(size_t words)
     return coalesce(bp);
 }
 
-void *mm_malloc(size_t size)
-{
+void *mm_malloc(size_t size){
     size_t asize;
     size_t extendsize;
     char *bp;
@@ -125,7 +122,7 @@ void *mm_malloc(size_t size)
     return bp;
 }
 
-// 오 이 부분이 묵시적일 때랑 비교해서 확 달라지네??!!
+//묵시적이랑 달라지는 부분
 static void *find_fit(size_t size){
     char *addr = GET(root); //아직 선언은 안되었지만 아래 코드를 보면 addr은 bp를 가리키게 될거다.
     while(addr != NULL){ //addr이 NULL이면 탈출
@@ -136,6 +133,7 @@ static void *find_fit(size_t size){
     }
     return NULL;
 }
+//묵시적이랑 달라지는 부분
 void remove_freenode(char *bp){
     //만약 가용리스트에서 맞는 사이즈 블록이라 할당이 된 경우라면 가용리스트 목록에서 빼줘야 할 거 아니냐 (더이상 가용하지 않게 됐으니까. 그 과정임)
     //철현(경력 20년차) - 현수(경력 10년차) - 재민(경력 3년차)가 있다고 생각하자. bp에 따라서 재민, 현수, 철현이 달라지고
@@ -149,7 +147,7 @@ void remove_freenode(char *bp){
             //그럼 철현은 현수한테 가서 현수의 사수 정보를 0으로 없애고 (야~ 나 이제 나간다~ 차장님 말고 형이라고 불러~)
             PUT(PRED_LINK(GET(SUCC_LINK(bp))), 0); 
        }
-        //철현이 나가니까 이제 현수가 왕고(최초)에요~ 라고 루트노드(부장님한테)에 말함.
+        //철현이 나가니까 이제 현수가 왕고(root)에요~.
         PUT(root, GET(SUCC_LINK(bp))); 
     }
 
@@ -169,7 +167,7 @@ void remove_freenode(char *bp){
     PUT(SUCC_LINK(bp), 0);
     PUT(PRED_LINK(bp), 0);
 }
-
+//묵시적이랑 달라지는 부분
 static void place(void *bp, size_t asize){
     size_t csize = GET_SIZE(HDRP(bp));
     //bp는 현재 find_fit해서 찾은 들어갈 수 있는 공간인데 왜 remove_freenode를 먼저해줄까? 이거 place함수 끝나기 바로 전에 해줘도 되나?
@@ -188,17 +186,16 @@ static void place(void *bp, size_t asize){
     }
 }
 
-void mm_free(void *ptr)
-{
+void mm_free(void *ptr){
+    // 할당 된 블록을 
     size_t size = GET_SIZE(HDRP(ptr));
     /* implicit_find_fit */
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
     coalesce(ptr);
 }
-
-static void *coalesce(void *bp)
-{
+//묵시적이랑 달라지는 부분
+static void *coalesce(void *bp){
     size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
@@ -224,16 +221,26 @@ static void *coalesce(void *bp)
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); //write new_size to next_block footer
         bp = PREV_BLKP(bp); // bp is changed
     }
+    insert_node(bp); // CASE에 따라 만들어진 블럭을 가용 리스트(free-list)의 가장 앞에 삽입
     return bp;
 }
+//묵시적이랑 달라지는 부분
+void insert_node(char *bp){
+    // 후입선출 기준으로 넣을거다.P830
+    char *SUCC = GET(root);     // 루트가 가리키는 곳의 주소 확인
+    // 루트가 존재한다면?
+    if(SUCC != NULL){           
 
-void insert_node(char *ptr){
-    char *SUCC = GET(root);      // 루트가 가리기는 곳의 주소 확인
-    if(SUCC != NULL){           // 루트가 없다면
-	    PUT(PRED_LINK(SUCC), ptr); // free-list의 이전 블럭 연결을 현재의 블럭으로 연결
+        // 후입선출이니까 지금의 루트를 갈아끼우고 낙하산으로 철현차장 자리보다 위에 꽂아야함.
+        // 철현차장 선임으로 새로 연결한 블록의 payload인 bp를 넣어주면 되겠지?
+	    PUT(PRED_LINK(SUCC), bp); 
 	}
-    PUT(SUCC_LINK(ptr), SUCC);  // 현재 블럭의 다음 연결을 free-list의 시작 노드로 가리킴 
-    PUT(root, ptr); // bp블럭을 루트가 가리키게 한다.
+    //루트가 존재하지 않는다면?
+    //회사에 아무도 그 일 해본 사람이 없는 경우는 새로 들어오는 bp가 '내 사수는 없어요~' 라고 말하면 같은 말이 됨.
+    PUT(SUCC_LINK(bp), SUCC);  // 현재 블럭의 다음 연결을 free-list의 시작 노드로 가리킴 
+    
+    // 왕고(루트)자리는 bp가 차지하면 됨. 
+    PUT(root, bp); // bp블럭을 루트가 가리키게 한다.
 }
 
 void *mm_realloc(void *ptr, size_t size){

@@ -185,8 +185,7 @@ void *mm_malloc(size_t size)
 /*
  * mm_free - Freeing a block does nothing.
  */
-void mm_free(void *ptr)
-{
+void mm_free(void *ptr){
     size_t size = GET_SIZE(HDRP(ptr));
     /* implicit_find_fit */
     PUT(HDRP(ptr), PACK(size, 0));
@@ -196,8 +195,7 @@ void mm_free(void *ptr)
 /*=
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
  */
-void *mm_realloc(void *ptr, size_t size)
-{
+void *mm_realloc(void *ptr, size_t size){
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
