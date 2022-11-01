@@ -136,15 +136,52 @@ static void *find_fit(size_t size){
     }
     return NULL;
 }
+void remove_freenode(char *bp){
+    //만약 가용리스트에서 맞는 사이즈 블록이라 할당이 된 경우라면 가용리스트 목록에서 빼줘야 할 거 아니냐 (더이상 가용하지 않게 됐으니까. 그 과정임)
+    //철현(경력 20년차) - 현수(경력 10년차) - 재민(경력 3년차)가 있다고 생각하자. bp에 따라서 재민, 현수, 철현이 달라지고
+    //재민, 현수, 철현 각각이 회사(가용리스트 목록)를 나오는 경우 해야할 일이 달라
+
+
+    //철현처럼 사수가 없는 사람이 회사를 나가려는 상황
+    if(GET(PRED_LINK(bp)) == NULL){ 
+        //철현은 사수 없이 맨땅에 해딩 했음.
+        if(GET(SUCC_LINK(bp)) != NULL){ //후임자는 현수가 있음.
+            //그럼 철현은 현수한테 가서 현수의 사수 정보를 0으로 없애고 (야~ 나 이제 나간다~ 차장님 말고 형이라고 불러~)
+            PUT(PRED_LINK(GET(SUCC_LINK(bp))), 0); 
+       }
+        //철현이 나가니까 이제 현수가 왕고(최초)에요~ 라고 루트노드(부장님한테)에 말함.
+        PUT(root, GET(SUCC_LINK(bp))); 
+    }
+
+    // 현수나 재민처럼 사수가 있는 놈이 회사를 나가려는 상황
+    else{ 
+         //재민, 현수 중 후임이 있는 사람이 회사를 나가려는 상황 (bp은 현수)
+        if( GET(SUCC_LINK(bp)) != NULL) {
+             //현수가 회사를 나오려면 재민이에게 '나이제 나가니까 모르는거 철현에게 물어봐' 니 사수는 이제 철현이야 라고 말해야함.
+            PUT(PRED_LINK(GET(SUCC_LINK(bp))), GET(PRED_LINK(bp)));
+        }
+        // 그리고 철현에게 저 나가니 이제 재민이가 철현 부사수에요. 라고 해야할 거 아님? (철현의 후임으로 재민을 넣어야함)
+        // 이 경우는 맨 뒤 재민이가 나가는 상황에도 적용 되는데 재민의 후임은 없으니까 Null이었잖아? 재민이 나가니까 이제 현수의 후임을 NUll로 바꿔주면 됨.  
+        PUT(SUCC_LINK(GET(PRED_LINK(bp)))), GET(SUCC_LINK(bp));
+    }
+
+    //나간 사람도 내 사수, 후임에 대한 기억을 지워야 진정한 퇴사지!
+    PUT(SUCC_LINK(bp), 0);
+    PUT(PRED_LINK(bp), 0);
+}
 
 static void place(void *bp, size_t asize){
     size_t csize = GET_SIZE(HDRP(bp));
+    //bp는 현재 find_fit해서 찾은 들어갈 수 있는 공간인데 왜 remove_freenode를 먼저해줄까? 이거 place함수 끝나기 바로 전에 해줘도 되나?
+    //ㄴㄴ coalesce때문에 안됨.(bp를 가용리스트에서 빼줘야 새로 바뀐 연결 리스트 기준으로 coalesce가 이루어지지. freenode를 맨 뒤에 해주면 coalesce작업이 의미가 없음.)
+    remove_freenode(bp)
     if ((csize - asize) >= (2*DSIZE)){ 
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
+        coalesce(bp); // 새로 생긴 블럭의 인접 블럭을 확인하여 병합
     }else{
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1)); 
@@ -190,8 +227,16 @@ static void *coalesce(void *bp)
     return bp;
 }
 
-void *mm_realloc(void *ptr, size_t size)
-{
+void insert_node(char *ptr){
+    char *SUCC = GET(root);      // 루트가 가리기는 곳의 주소 확인
+    if(SUCC != NULL){           // 루트가 없다면
+	    PUT(PRED_LINK(SUCC), ptr); // free-list의 이전 블럭 연결을 현재의 블럭으로 연결
+	}
+    PUT(SUCC_LINK(ptr), SUCC);  // 현재 블럭의 다음 연결을 free-list의 시작 노드로 가리킴 
+    PUT(root, ptr); // bp블럭을 루트가 가리키게 한다.
+}
+
+void *mm_realloc(void *ptr, size_t size){
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
@@ -205,30 +250,4 @@ void *mm_realloc(void *ptr, size_t size)
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;
-}
-
-void insert_node(char *ptr){
-    char *SUCC = GET(root);      // 루트가 가리기는 곳의 주소 확인
-    if(SUCC != NULL){           // 루트가 없다면
-	    PUT(PRED_LINK(SUCC), ptr); // free-list의 이전 블럭 연결을 현재의 블럭으로 연결
-	}
-    PUT(SUCC_LINK(ptr), SUCC);  // 현재 블럭의 다음 연결을 free-list의 시작 노드로 가리킴 
-    PUT(root, ptr); // bp블럭을 루트가 가리키게 한다.
-}
-
-void remove_freenode(char *ptr){ 
-	if(GET(PRED_LINK(ptr)) == NULL){
-		if(GET(SUCC_LINK(ptr)) != NULL){
-			PUT(PRED_LINK(GET(SUCC_LINK(ptr))), 0);
-		}
-		PUT(root, GET(SUCC_LINK(ptr)));
-	}
-	else{
-		if(GET(SUCC_LINK(ptr)) != NULL){
-			PUT(PRED_LINK(GET(SUCC_LINK(ptr))), GET(PRED_LINK(ptr)));
-		}
-		PUT(SUCC_LINK(GET(PRED_LINK(ptr))), GET(SUCC_LINK(ptr)));
-	}
-	PUT(SUCC_LINK(ptr), 0);
-	PUT(PRED_LINK(ptr), 0);
 }
