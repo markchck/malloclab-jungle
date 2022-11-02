@@ -39,15 +39,7 @@ team_t team = {
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-
-
-/* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-
-#define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-
 #define WSIZE 4
 #define DSIZE 8
 #define CHUNKSIZE (1 << 12)
@@ -61,7 +53,6 @@ team_t team = {
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
-
 #define PRED_LINK(bp) ((char *)(bp))         // free-list에서 이전 연결 블록 정보
 #define SUCC_LINK(bp) ((char *)(bp) + WSIZE) // free-list에서 다음 연결 블록 정보
 // PROTOTYPES
@@ -71,7 +62,6 @@ static void *find_fit(size_t asize);    // 가용 리스트(free list) first-fit
 static void place(void *bp, size_t asize); // find-fit으로 찾은 블록을 알맞게 위치한다.
 void insert_node(char *ptr);            // free()를 통해 가용된 블록을 가용 리스트의 처음 자리에 삽입 (LIFO 정책)
 void remove_freenode(char *ptr);        // 가용 리스트의 연결 포인터 수정  
-// 
 static char *heap_listp = NULL; // 힙의 시작 주소를 가리킴
 static char *root = NULL;   
 
@@ -83,7 +73,9 @@ int mm_init(void){
     PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1));
     PUT(heap_listp + (3 * WSIZE), PACK(0, 1));
     // void *sss = heap_listp;
-    
+
+// 오류1) 루트 주소에 heap_listp를 넣어줘야함.
+    root = heap_listp;
     heap_listp += (2 * WSIZE);
 
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
@@ -94,7 +86,8 @@ int mm_init(void){
 static void *extend_heap(size_t words){
     char *bp;
     size_t size;
-    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+// 오류 2) size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE; 워드 사이즈로 하면 안됨 lines outside heap
+    size = (words % 2) ? (words + 1) * DSIZE : words * DSIZE;
     if ((long)(bp = mem_sbrk(size)) == -1)
         return NULL;
     PUT(HDRP(bp), PACK(size, 0));
@@ -102,7 +95,6 @@ static void *extend_heap(size_t words){
     PUT(SUCC_LINK(bp),0);
     PUT(PRED_LINK(bp),0);
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));
-
     return coalesce(bp);
 }
 
@@ -129,11 +121,13 @@ void *mm_malloc(size_t size){
 }
 
 void mm_free(void *ptr){
-    // 할당 된 블록을 
     size_t size = GET_SIZE(HDRP(ptr));
-    /* implicit_find_fit */
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
+
+//오류 3) 자기 자신에 정보를 지우지 않으면 안됨.
+    PUT(SUCC_LINK(ptr), 0);
+    PUT(PRED_LINK(ptr), 0);
     coalesce(ptr);
 }
 //묵시적이랑 달라지는 부분
@@ -143,11 +137,11 @@ static void *coalesce(void *bp){
     size_t size = GET_SIZE(HDRP(bp));
 
     // CASE 1: both prev and next are allocated
-    if(prev_alloc && next_alloc)
-        return bp;
+    if(prev_alloc && next_alloc){
+    }
     else if(prev_alloc && !next_alloc){
         // CASE 2: prev is allocatd, next is freed
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); // new size = cur_block size + next_block size
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         
         //연결을 하는 행위도 열결 당하는 입장에서는 가용리스트에서 나가라는 의미랑 같네! (정리해고 같은 느낌? 난 가만히 있는데 내 일거리를 남에게 줘버림.)
         //그러니까 freenode에서 없애는 작업을 해야하는거임.
@@ -155,28 +149,29 @@ static void *coalesce(void *bp){
         //연결을 할 때 뭐 해주는거 없이 그냥 앞 뒤 allocate야 아니야? 만 보면 됐었음.
         remove_freenode(NEXT_BLKP(bp));        // 가용 리스트에서 다음 블럭의 연결 제거
 
-        PUT(HDRP(bp), PACK(size, 0)); // write new size to cur_block header
-        PUT(FTRP(bp), PACK(size, 0)); // copy it to the footer also.
+        PUT(HDRP(bp), PACK(size, 0)); 
+        PUT(FTRP(bp), PACK(size, 0)); 
     }else if(!prev_alloc && next_alloc){
         // CASE 3: prev is freed, next is allocated
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))); // new size = cur_block size + prev_block size
+        size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         remove_freenode(PREV_BLKP(bp));
-        PUT(FTRP(bp), PACK(size, 0)); // write new size to cur_block footer
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // write new size to prev_block header
-        bp = PREV_BLKP(bp); //bp is changed
+        PUT(FTRP(bp), PACK(size, 0)); 
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); 
+        bp = PREV_BLKP(bp); 
     }else{
         // CASE 4: both prev and next are freed
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp))); // newsize = cur_block size + prev_block size + next_block size
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp))); 
         remove_freenode(PREV_BLKP(bp));
         remove_freenode(NEXT_BLKP(bp));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // write new_size to prev_block header
+
+//오류 4) 아래 두 줄 순서 뒤바꾸면 뻑남 
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); //write new_size to next_block footer
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // write new_size to prev_block header
         bp = PREV_BLKP(bp); // bp is changed
     }
     insert_node(bp); // CASE에 따라 만들어진 블럭을 가용 리스트(free-list)의 가장 앞에 삽입
     return bp;
 }
-//묵시적이랑 달라지는 부분
 void insert_node(char *bp){
     // 후입선출 기준으로 넣을거다.P830
     char *SUCC = GET(root);     // 루트가 가리키는 곳의 주소 확인
@@ -195,7 +190,6 @@ void insert_node(char *bp){
     PUT(root, bp); // bp블럭을 루트가 가리키게 한다.
 }
 
-//묵시적이랑 달라지는 부분
 void remove_freenode(char *bp){
     //만약 가용리스트에서 맞는 사이즈 블록이라 할당이 된 경우라면 가용리스트 목록에서 빼줘야 할 거 아니냐 (더이상 가용하지 않게 됐으니까. 그 과정임)
     //철현(경력 20년차) - 현수(경력 10년차) - 재민(경력 3년차)가 있다고 생각하자. bp에 따라서 재민, 현수, 철현이 달라지고
@@ -230,23 +224,33 @@ void remove_freenode(char *bp){
     PUT(PRED_LINK(bp), 0);
 }
 
+//오류 5) 리알록을 손대지 않으면 오류남.
 void *mm_realloc(void *ptr, size_t size){
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
+    if(size <= 0){ //equivalent to mm_free(ptr).
+        mm_free(ptr);
+        return 0;
+    }
 
-    newptr = mm_malloc(size);
-    if (newptr == NULL)
-        return NULL;
-    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    if (size < copySize)
-        copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
-    return newptr;
+    if(ptr == NULL){
+        return mm_malloc(size); //equivalent to mm_malloc(size).
+    }
+
+    void *newp = mm_malloc(size); //new pointer.
+
+    if(newp == NULL){
+        return 0;
+    }
+    
+    size_t oldsize = GET_SIZE(HDRP(ptr));
+    if(size < oldsize){
+    	oldsize = size; //shrink size.
+	} 
+    memcpy(newp, ptr, oldsize); //cover.
+    mm_free(ptr);
+    return newp;
 }
 
-//묵시적이랑 달라지는 부분
+
 static void *find_fit(size_t size){
     char *addr = GET(root); //아직 선언은 안되었지만 아래 코드를 보면 addr은 bp를 가리키게 될거다.
     while(addr != NULL){ //addr이 NULL이면 탈출
@@ -258,7 +262,6 @@ static void *find_fit(size_t size){
     return NULL;
 }
 
-//묵시적이랑 달라지는 부분
 static void place(void *bp, size_t asize){
     size_t csize = GET_SIZE(HDRP(bp));
     //bp는 현재 find_fit해서 찾은 들어갈 수 있는 공간인데 왜 remove_freenode를 먼저해줄까? 이거 place함수 끝나기 바로 전에 해줘도 되나?

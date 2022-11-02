@@ -89,7 +89,6 @@ int mm_init(void){
 	if(extend_heap(CHUNKSIZE / WSIZE) == NULL){ // 초기 힙의 크기를 늘린다.
 		return -1;
 	}
-	
 	return 0;
 }
 
@@ -186,33 +185,42 @@ void mm_free(void *ptr){
             호출하여 명시적 가용 리스트에서 인접 가용 블럭의 연결을 끊어준다.
  */
 static void *coalesce(void *bp){
-    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp))); // 이전 블록의 할당 여부 확인 
-    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp))); // 1 : 할당된 블록, 0 : 가용 블록
-    size_t size = GET_SIZE(HDRP(bp)); // 현재 블럭의 크기 확인
+    size_t prev_alloc = GET_ALLOC(FTRP(PREV_BLKP(bp)));
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+    size_t size = GET_SIZE(HDRP(bp));
 
-    if(prev_alloc && next_alloc){ // CASE 1: 이전, 다음 블럭 모두 할당되어 있으면 합치지 않음
-	}
-	
-    else if(prev_alloc && !next_alloc){ // CASE 2: 다음 블럭이 가용 블럭(free) 일 때
-        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); // 현재 블럭의 크기에 다음 블럭의 크기를 더함
+    // CASE 1: both prev and next are allocated
+    if(prev_alloc && next_alloc){
+    }
+    else if(prev_alloc && !next_alloc){
+        // CASE 2: prev is allocatd, next is freed
+        size += GET_SIZE(HDRP(NEXT_BLKP(bp))); // new size = cur_block size + next_block size
+        
+        //연결을 하는 행위도 열결 당하는 입장에서는 가용리스트에서 나가라는 의미랑 같네! (정리해고 같은 느낌? 난 가만히 있는데 내 일거리를 남에게 줘버림.)
+        //그러니까 freenode에서 없애는 작업을 해야하는거임.
+        //묵시적일 때는 가용블럭을 리스트에 넣고 따로 관리하지 않고 가용하지 않은 블럭이랑 가용한 블럭이랑 걍 섞있고 서로의 헤더 푸터만 바라보기 때문에 
+        //연결을 할 때 뭐 해주는거 없이 그냥 앞 뒤 allocate야 아니야? 만 보면 됐었음.
         remove_freenode(NEXT_BLKP(bp));        // 가용 리스트에서 다음 블럭의 연결 제거
-        PUT(HDRP(bp), PACK(size, 0));          // 현재 블럭의 header 및 footer에 크기 및 할당 여부 업데이트
-        PUT(FTRP(bp), PACK(size, 0));
-    }
-    else if(!prev_alloc && next_alloc){ // CASE 3: 이전 블럭이 가용 블럭(free) 일 때
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))); // CASE 2와 유사
+
+        PUT(HDRP(bp), PACK(size, 0)); // write new size to cur_block header
+        PUT(FTRP(bp), PACK(size, 0)); // copy it to the footer also.
+    }else if(!prev_alloc && next_alloc){
+        // CASE 3: prev is freed, next is allocated
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))); // new size = cur_block size + prev_block size
         remove_freenode(PREV_BLKP(bp));
-        PUT(FTRP(bp),PACK(size, 0));
-        PUT(HDRP(PREV_BLKP(bp)),PACK(size, 0));
-        bp = PREV_BLKP(bp);
-    }
-    else{  // CASE 4: 이전 블럭 및 다음 블럭 모두 가용 블럭(free) 일 때 
-        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp)));
+        PUT(FTRP(bp), PACK(size, 0)); // write new size to cur_block footer
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // write new size to prev_block header
+        bp = PREV_BLKP(bp); //bp is changed
+    }else{
+        // CASE 4: both prev and next are freed
+        size += GET_SIZE(HDRP(PREV_BLKP(bp))) + GET_SIZE(FTRP(NEXT_BLKP(bp))); // newsize = cur_block size + prev_block size + next_block size
         remove_freenode(PREV_BLKP(bp));
         remove_freenode(NEXT_BLKP(bp));
-        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
-        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
-        bp = PREV_BLKP(bp);
+
+//아래 두 줄 순서 뒤바꾸면 뻑남 
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0)); //write new_size to next_block footer
+        PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0)); // write new_size to prev_block header
+        bp = PREV_BLKP(bp); // bp is changed
     }
     insert_node(bp); // CASE에 따라 만들어진 블럭을 가용 리스트(free-list)의 가장 앞에 삽입
     return bp;
