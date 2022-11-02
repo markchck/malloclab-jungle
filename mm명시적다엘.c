@@ -100,7 +100,7 @@ int mm_init(void)
     PUT(heap_listp + 3 * WSIZE, NULL);        // 프롤로그 SUCC 포인터 NULL로 초기화
     PUT(heap_listp + 4 * WSIZE, PACK(16, 1)); // 프롤로그 풋터 16/1
     PUT(heap_listp + 5 * WSIZE, PACK(0, 1));  // 에필로그 헤더 0/1
-
+    void * sss = heap_listp;
     free_listp = heap_listp + DSIZE; // free_listp를 PRED 포인터 가리키게 초기화
     // Extend the empty heap with a free block of CHUNKSIZE bytes
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL) // word가 몇개인지 확인해서 넣으려고(DSIZE로 나눠도 됨)
@@ -130,6 +130,8 @@ static void *coalesce(void *bp)
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         bp = PREV_BLKP(bp);
         PUT(HDRP(bp), PACK(size, 0));
+    
+    
         PUT(FTRP(bp), PACK(size, 0));
         // PUT(FTRP(bp), PACK(size,0));  // @@@@ explicit에서 추가 @@@@ - 여기 다르긴함
         // PUT(HDRP(PREV_BLKP(bp)), PACK(size,0));
