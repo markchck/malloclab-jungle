@@ -1,14 +1,3 @@
-/*
- * mm-naive.c - The fastest, least memory-efficient malloc package.
- *
- * In this naive approach, a block is allocated by simply incrementing
- * the brk pointer.  A block is pure payload. There are no headers or
- * footers.  Blocks are never coalesced or reused. Realloc is
- * implemented directly using mm_malloc and mm_free.
- *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -24,56 +13,48 @@
  ********************************************************/
 team_t team = {
     /* Team name */
-    "ateam",
+    "SWJungle_week06_10",
     /* First member's full name */
-    "Harry Bovik",
+    "JongWoo Han",
     /* First member's email address */
-    "bovik@cs.cmu.edu",
+    "jongwoo0221@gmail.com",
     /* Second member's full name (leave blank if none) */
-    "",
+    "Humyung Lee",
     /* Second member's email address (leave blank if none) */
-    ""};
+    "lhm"
+};
 
-/* single word (4) or double word (8) alignment */
-#define ALIGNMENT 8
+// CONSTANTS
+#define WSIZE 4     // 워드의 크기
+#define DSIZE 8     // 더블 워드의 크기       
+#define CHUNKSIZE (1<<12)   // 2^12 = 4KB
 
-/* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-
-#define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-
-
-/* rounds up to the nearest multiple of ALIGNMENT */
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-
-#define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
-
-#define WSIZE 4
-#define DSIZE 8
-#define CHUNKSIZE (1 << 12)
-#define MAX(x, y) ((x) > (y) ? (x) : (y))
-#define PACK(size, alloc) ((size) | (alloc))
-#define GET(p) (*(unsigned int *)(p))
-#define PUT(p, val) (*(unsigned int *)(p) = (val))
-#define GET_SIZE(p) (GET(p) & ~0x7)
-#define GET_ALLOC(p) (GET(p) & 0x1)
-#define HDRP(bp) ((char *)(bp)-WSIZE)
-#define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
-#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
-#define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
-
+// MACROS
+#define ALIGN(size) (((size) + (0x7) & ~0x7)    // 더블워드 정렬이기 때문에 size보다 큰 8의 배수로 올림
+#define MAX(x, y) ((x) > (y) ? (x) : (y))       // x와 y 중 더 큰 값 반환
+#define PACK(size, alloc) ((size) | (alloc))    // 블록의 크기와 할당 여부를 pack
+#define GET(p) (*(unsigned int *)(p))               // p의 주소의 값 확인
+#define PUT(p,val) (*(unsigned int *)(p) = (val))   // p의 주소에 val 값 저장
+#define GET_SIZE(p) (GET(p) & ~0x7)             // 블록의 크기 반환
+#define GET_ALLOC(p) (GET(p) & 0x1)             // 블록의 할당여부 반환
+#define HDRP(bp) ((char *)(bp) - WSIZE)         // 블록의 footer 주소 반환
+#define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)// 블록의 footer 주소 반환
+#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE))) // 이전 블록의 주소 반환
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE))) // 다음 블록의 주소 반환
 #define PRED_LINK(bp) ((char *)(bp))         // free-list에서 이전 연결 블록 정보
 #define SUCC_LINK(bp) ((char *)(bp) + WSIZE) // free-list에서 다음 연결 블록 정보
+
 // PROTOTYPES
 static void *extend_heap(size_t words); // 힙의 크기를 늘림
 static void *coalesce(void *bp);        // 인접한 가용(free) 블록을 합침
 static void *find_fit(size_t asize);    // 가용 리스트(free list) first-fit으로 탐색
 static void place(void *bp, size_t asize); // find-fit으로 찾은 블록을 알맞게 위치한다.
 void insert_node(char *ptr);            // free()를 통해 가용된 블록을 가용 리스트의 처음 자리에 삽입 (LIFO 정책)
-void remove_freenode(char *ptr);        // 가용 리스트의 연결 포인터 수정  
+void remove_freenode(char *ptr);        // 가용 리스트의 연결 포인터 수정   
+
 // 
 static char *heap_listp = NULL; // 힙의 시작 주소를 가리킴
-static char *root = NULL;   
+static char *root = NULL;       // 명시적 가용 리스트의 첫 노드를 가리킴
 
 int mm_init(void){
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1)
@@ -83,7 +64,7 @@ int mm_init(void){
     PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1));
     PUT(heap_listp + (3 * WSIZE), PACK(0, 1));
     // void *sss = heap_listp;
-    
+    root = heap_listp;
     heap_listp += (2 * WSIZE);
 
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
@@ -94,7 +75,7 @@ int mm_init(void){
 static void *extend_heap(size_t words){
     char *bp;
     size_t size;
-    size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+    size = (words % 2) ? (words + 1) * DSIZE : words * DSIZE;
     if ((long)(bp = mem_sbrk(size)) == -1)
         return NULL;
     PUT(HDRP(bp), PACK(size, 0));
@@ -134,6 +115,8 @@ void mm_free(void *ptr){
     /* implicit_find_fit */
     PUT(HDRP(ptr), PACK(size, 0));
     PUT(FTRP(ptr), PACK(size, 0));
+    PUT(SUCC_LINK(ptr), 0);
+    PUT(PRED_LINK(ptr), 0);
     coalesce(ptr);
 }
 //묵시적이랑 달라지는 부분
@@ -176,6 +159,32 @@ static void *coalesce(void *bp){
     insert_node(bp); // CASE에 따라 만들어진 블럭을 가용 리스트(free-list)의 가장 앞에 삽입
     return bp;
 }
+
+void *mm_realloc(void *ptr, size_t size){
+    if(size <= 0){ //equivalent to mm_free(ptr).
+        mm_free(ptr);
+        return 0;
+    }
+
+    if(ptr == NULL){
+        return mm_malloc(size); //equivalent to mm_malloc(size).
+    }
+
+    void *newp = mm_malloc(size); //new pointer.
+
+    if(newp == NULL){
+        return 0;
+    }
+    
+    size_t oldsize = GET_SIZE(HDRP(ptr));
+    if(size < oldsize){
+    	oldsize = size; //shrink size.
+	} 
+    memcpy(newp, ptr, oldsize); //cover.
+    mm_free(ptr);
+    return newp;
+}
+
 //묵시적이랑 달라지는 부분
 void insert_node(char *bp){
     // 후입선출 기준으로 넣을거다.P830
@@ -228,22 +237,6 @@ void remove_freenode(char *bp){
     //나간 사람도 내 사수, 후임에 대한 기억을 지워야 진정한 퇴사지!
     PUT(SUCC_LINK(bp), 0);
     PUT(PRED_LINK(bp), 0);
-}
-
-void *mm_realloc(void *ptr, size_t size){
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
-
-    newptr = mm_malloc(size);
-    if (newptr == NULL)
-        return NULL;
-    // copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    if (size < copySize)
-        copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
-    return newptr;
 }
 
 //묵시적이랑 달라지는 부분
